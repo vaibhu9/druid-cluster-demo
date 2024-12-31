@@ -1,0 +1,26 @@
+{
+  "name": "postgresql-data-source",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+    "database.server.name": "dbserver1",  // Unique server identifier for Kafka topic
+    "database.hostname": "postgres",      // Hostname of the PostgreSQL container
+    "database.port": "5432",              // PostgreSQL port
+    "database.user": "postgres",          // PostgreSQL user
+    "database.password": "root",          // PostgreSQL password
+    "database.dbname": "demo-druid",      // Database name
+    "schema.include.list": "public",      // Schema to include for change data capture
+    "plugin.name": "pgoutput",            // Logical replication plugin
+    "table.include.list": "public.employee",  // Table(s) to include in capture
+    "topic.prefix": "dbserver1",          // Prefix for Kafka topic
+    "snapshot.mode": "initial",           // Mode for snapshot of data (initial capture)
+    "include.schema.changes": "true",     // Include schema changes
+    "publication.autocreate.mode": "all_tables", // Autocreate publication for all tables
+    "slot.name": "debezium",              // Logical replication slot name
+    "publication.name": "dbz_publication" // Publication name
+  }
+}
+
+
+// Use below url and send this json data to the url to get the result
+// curl http://localhost:8083/connectors

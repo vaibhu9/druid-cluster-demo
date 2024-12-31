@@ -1,0 +1,190 @@
+services:
+  demo-druid:
+    build: 
+      context: .
+      dockerfile: dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/demo-druid
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: root
+    networks:
+      - druid_network
+
+  postgres:
+    container_name: postgres
+    # image: quay.io/debezium/postgres:latest
+    image: postgres:latest
+    ports:
+      - "5432:5432"
+    volumes:
+      - metadata_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=demo-druid
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=root
+    # Sets the Write-Ahead Logging (WAL) level to 'logical' for enabling logical replication in PostgreSQL.
+    command: ["postgres", "-c", "wal_level=logical"] #Logical replication is required when using tools like Debezium to stream changes from PostgreSQL to other systems (e.g., Kafka).
+    networks:
+      - druid_network
+
+  # Need 3.5 or later for container nodes
+  zookeeper:
+    container_name: zookeeper
+    image: zookeeper:3.5.10
+    ports:
+      - "2181:2181"
+    environment:
+      - ZOO_MY_ID=1
+    networks:
+      - druid_network
+
+  kafka:
+    image: quay.io/debezium/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      - ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT
+      - KAFKA_LISTENER_NAME=PLAINTEXT
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092 
+      - KAFKA_LISTENER_SECURITY_PROTOCOL=PLAINTEXT
+    networks:
+      - druid_network
+
+  kafka-connect:
+    image: quay.io/debezium/connect:latest
+    container_name: kafka-connect
+    depends_on:
+      - kafka
+      - postgres
+    ports:
+      - "8083:8083"
+    environment:
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - GROUP_ID=1
+      - CONFIG_STORAGE_TOPIC=connect_configs
+      - OFFSET_STORAGE_TOPIC=connect_offsets
+      - STATUS_STORAGE_TOPIC=connect_status
+      - KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+      - VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+      - INTERNAL_KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+      - INTERNAL_VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+      - CONFIG_STORAGE_REPLICATION_FACTOR=1
+      - OFFSET_STORAGE_REPLICATION_FACTOR=1
+      - STATUS_STORAGE_REPLICATION_FACTOR=1
+    networks:
+      - druid_network
+
+  coordinator:
+    image: apache/druid:31.0.0
+    container_name: coordinator
+    volumes:
+      - druid_shared:/opt/shared
+      - coordinator_var:/opt/druid/var
+    depends_on:
+      - zookeeper
+      - postgres
+    ports:
+      - "8081:8081"
+    command:
+      - coordinator
+    env_file:
+      - environment
+    networks:
+      - druid_network
+
+  broker:
+    image: apache/druid:31.0.0
+    container_name: broker
+    volumes:
+      - broker_var:/opt/druid/var
+    depends_on:
+      - zookeeper
+      - postgres
+      - coordinator
+    ports:
+      - "8082:8082"
+    command:
+      - broker
+    env_file:
+      - environment
+    networks:
+      - druid_network
+
+  historical:
+    image: apache/druid:31.0.0
+    container_name: historical
+    volumes:
+      - druid_shared:/opt/shared
+      - historical_var:/opt/druid/var
+    depends_on: 
+      - zookeeper
+      - postgres
+      - coordinator
+    ports:
+      - "8093:8093"
+    command:
+      - historical
+    env_file:
+      - environment
+    networks:
+      - druid_network
+
+  middlemanager:
+    image: apache/druid:31.0.0
+    container_name: middlemanager
+    volumes:
+      - druid_shared:/opt/shared
+      - middle_var:/opt/druid/var
+    depends_on: 
+      - zookeeper
+      - postgres
+      - coordinator
+    ports:
+      - "8091:8091"
+      - "8100-8105:8100-8105"
+    command:
+      - middleManager
+    env_file:
+      - environment
+    networks:
+      - druid_network
+
+  router:
+    image: apache/druid:31.0.0
+    container_name: router
+    volumes:
+      - router_var:/opt/druid/var
+    depends_on:
+      - zookeeper
+      - postgres
+      - coordinator
+    ports:
+      - "8888:8888"
+    command:
+      - router
+    env_file:
+      - environment
+    networks:
+      - druid_network
+
+
+networks:
+  druid_network:
+    driver: bridge
+
+volumes:
+  pgdata:
+  metadata_data: {}
+  middle_var: {}
+  historical_var: {}
+  broker_var: {}
+  coordinator_var: {}
+  router_var: {}
+  druid_shared: {}
